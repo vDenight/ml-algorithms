@@ -3,15 +3,13 @@ from typing import Generator
 import numpy as np
 import numpy.typing as ntp
 
-seed_value = 42
-rng = np.random.default_rng(seed=seed_value)
-
 
 class LinearRegression:
-    def __init__(self, feat_len: int, l1_coeff: float = 0.0, l2_coeff: float = 0.0):
-        self.w_len = feat_len + 1
+    def __init__(self, n_features: int, l1_coeff: float = 0.0, l2_coeff: float = 0.0, seed: int | None = None):
+        self.w_len = n_features + 1
+        self.rng = np.random.default_rng(seed=seed)
         self.weights = (
-            rng.random(size=(1, self.w_len)) * 2
+            self.rng.random(size=(1, self.w_len)) * 2
         ) - 1  # weights coded as row vector
         self.l1_coeff = l1_coeff
         self.l2_coeff = l2_coeff
@@ -32,7 +30,7 @@ class LinearRegression:
         yield self.weights
         n_samples = X.shape[0]
         for _epoch in range(epochs):
-            iterations = n_samples // batch_size
+            iterations = int(np.ceil(n_samples / batch_size))
             for iteration in range(iterations):
                 start_index = iteration * batch_size
                 end_index = (
