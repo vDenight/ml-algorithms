@@ -28,7 +28,7 @@ class LogisticRegression:
                 X_partial = X_shuffled[start_index:end_index]
                 y_partial = y_shuffled[start_index:end_index]
 
-                grad = self.cross_entropy_grad(X_partial, y_partial)
+                grad = self.log_loss_grad(X_partial, y_partial)
 
                 self.linreg.weights = (
                         self.linreg.weights - (learning_rate * grad)
@@ -53,9 +53,9 @@ class LogisticRegression:
 
         return y_classified
 
-    def cross_entropy_grad(self, X: npt.NDArray[np.float64], y: npt.NDArray[np.float64]):
+    def log_loss_grad(self, X: npt.NDArray[np.float64], y: npt.NDArray[np.float64]):
         """
-        calculate the gradient of the cross-entropy loss
+        calculate the gradient of the binary cross-entropy loss (log loss)
         """
         n_samples = X.shape[0]
         X_w_ones = np.c_[X, np.ones(X.shape[0])]
