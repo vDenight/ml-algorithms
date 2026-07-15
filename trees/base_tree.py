@@ -91,7 +91,7 @@ class BaseTree:
     which uses the gini impurity for choosing the right nodes.
     """
 
-    def __init__(self, max_depth: int, min_samples_split_ratio: float, min_samples_leaf_ratio: float) -> None:
+    def __init__(self, max_depth: int = 1000, min_samples_split_ratio: float = 0.0, min_samples_leaf_ratio: float = 0.0) -> None:
         if max_depth <= 0:
             raise ValueError("max_depth must be greater than 0")
         if min_samples_split_ratio < 0 or min_samples_split_ratio >= 1:
@@ -132,7 +132,7 @@ class BaseTree:
             return self._create_leaf(labels)
 
         # not a pure node so we look for a best split strategy
-        node = self._get_best_candidate(X, labels)
+        node = self._get_best_candidate(X, labels, min_samples_leaf)
 
         left_mask = X[:, node.feature] <= node.threshold
 
