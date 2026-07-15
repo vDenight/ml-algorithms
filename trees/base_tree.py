@@ -1,4 +1,3 @@
-
 import numpy as np
 import numpy.typing as npt
 
@@ -24,7 +23,7 @@ def calculate_node_gini(labels: npt.NDArray[np.int64]) -> np.float64:
 
 
 def calculate_weighted_gini(feature: np.uint64, threshold: np.float64, X: npt.NDArray[np.float64],
-                            labels: npt.NDArray[np.uint64]) -> np.float64:
+                            labels: npt.NDArray[np.uint64], min_samples_leaf: int) -> np.float64:
     """
     Calculates the weighted Gini Impurity of a node.
 
@@ -42,10 +41,14 @@ def calculate_weighted_gini(feature: np.uint64, threshold: np.float64, X: npt.ND
     left_labels = labels[left_mask]
     right_labels = labels[~left_mask]
 
+    if left_labels.shape[0] < min_samples_leaf or right_labels.shape[0] < min_samples_leaf:
+        return np.float64(np.inf)
+
     gini_left = calculate_node_gini(left_labels)
     gini_right = calculate_node_gini(right_labels)
 
     return (left_labels.shape[0] / n_total * gini_left) + (right_labels.shape[0] / n_total * gini_right)
+
 
 class Node:
     def __init__(self, feature=None, threshold=None, left=None, right=None, *, value=None, certainty=None):
@@ -103,9 +106,12 @@ class BaseTree:
 
     def fit(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64]):
         # create a root node and all nodes subsequently using a recursion
-        self.root = self._build_tree(X, labels)
+        min_samples_split = int(X.shape[0] * self.min_samples_split_ratio)
+        min_samples_leaf = int(X.shape[0] * self.min_samples_leaf_ratio)
+        self.root = self._build_tree(X, labels, min_samples_split, min_samples_leaf)
 
-    def _build_tree(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64], depth=0) -> Node:
+    def _build_tree(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64], depth=0,
+                    min_samples_split: int = 0, min_samples_leaf: int = 0) -> Node:
         """
         This is a recursive function that builds the entire tree, based on its current X, labels and depth.
         what it does:
@@ -118,7 +124,11 @@ class BaseTree:
             return self._create_leaf(labels)
 
         # case 2: this is a pure node, so we return a leaf (early stopping)
-        if len(np.unique(labels)) == 1:
+        if np.all(labels == labels[0]):
+            return self._create_leaf(labels)
+
+        # case 3: this node is not suitable for a split min_samples_split not satisfied
+        if X.shape[0] < min_samples_split:
             return self._create_leaf(labels)
 
         # not a pure node so we look for a best split strategy
@@ -128,11 +138,11 @@ class BaseTree:
 
         # we additionally check if our threshold is splitting any data
         if np.any(left_mask) and np.any(~left_mask):
-            # case 3: we get a split so we build additional nodes as left and right children
-            node.left = self._build_tree(X[left_mask], labels[left_mask], depth + 1)
-            node.right = self._build_tree(X[~left_mask], labels[~left_mask], depth + 1)
+            # case 4: we get a split so we build additional nodes as left and right children
+            node.left = self._build_tree(X[left_mask], labels[left_mask], depth + 1, min_samples_split, min_samples_leaf)
+            node.right = self._build_tree(X[~left_mask], labels[~left_mask], depth + 1, min_samples_split, min_samples_leaf)
         else:
-            # case 4: best feature/threshold combo isn't able to differentiate any two sub-groups
+            # case 5: best feature/threshold combo isn't able to differentiate any two sub-groups
             # in this case we need to (forcefully) transform it node as further splits don't make any sense
             return self._create_leaf(labels)
 
@@ -149,9 +159,9 @@ class BaseTree:
 
         return Node(value=most_frequent, certainty=certainty)
 
-    def _get_best_candidate(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64]) -> Node:
+    def _get_best_candidate(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64], min_samples_leaf) -> Node:
         """Helper that tries to find the best node to split on"""
-        best_candidate = {"threshold":np.float64(0.0), "feature":np.uint64(0), "weighted_gini":np.inf}
+        best_candidate = {"threshold": np.float64(np.inf), "feature": np.uint64(0), "weighted_gini": np.float64(np.inf)}
         for i in range(X.shape[1]):
             unique_col_vals_sorted = np.unique(X[:, i])
 
@@ -159,11 +169,11 @@ class BaseTree:
             if len(unique_col_vals_sorted) <= 1:
                 continue
 
-            thresholds:npt.NDArray[np.float64] = (unique_col_vals_sorted[:-1] + unique_col_vals_sorted[1:]) / 2
+            thresholds: npt.NDArray[np.float64] = (unique_col_vals_sorted[:-1] + unique_col_vals_sorted[1:]) / 2
             for threshold in thresholds:
-                weighted_gini = calculate_weighted_gini(i, threshold, X, labels)
-                if weighted_gini < best_candidate["weighted_gini"]: # comparing to the best score so far
-                    best_candidate = {"threshold":threshold, "feature":i, "weighted_gini":weighted_gini}
+                weighted_gini = calculate_weighted_gini(i, threshold, X, labels, min_samples_leaf)
+                if weighted_gini < best_candidate["weighted_gini"]:  # comparing to the best score so far
+                    best_candidate = {"threshold": threshold, "feature": i, "weighted_gini": weighted_gini}
 
         return Node(feature=best_candidate["feature"], threshold=best_candidate["threshold"])
 
