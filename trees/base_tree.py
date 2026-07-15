@@ -51,14 +51,14 @@ def calculate_weighted_gini(feature: np.uint64, threshold: np.float64, X: npt.ND
 
 
 class Node:
-    def __init__(self, feature=None, threshold=None, left=None, right=None, *, value=None, certainty=None):
+    def __init__(self, feature=None, threshold=None, left=None, right=None, *, value=None, probabilities=None):
         self.feature = feature  # Index of the feature to split on
         self.threshold = threshold  # The value to split that feature at
         self.left = left  # The left child Node
         self.right = right  # the right child Node
 
         self.value = value  # the majority class (only populated if it is a leaf)
-        self.certainty = certainty  # optional value to get a certainty like 75% of accurate guess
+        self.probabilities = probabilities  # optional value to get a certainty like 75% of accurate guess
 
     def predict(self, x: npt.NDArray[np.float64]) -> int:
         """
@@ -72,13 +72,13 @@ class Node:
 
         return self.right.predict(x)
 
-    def predict_with_certainty(self, x) -> tuple[int, float]:
-        if self.value is not None:
-            return self.value, self.certainty
-
+    def predict_proba(self, x: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        """Returns the full probability vector for a single sample."""
+        if self.probabilities is not None:
+            return self.probabilities
         if x[self.feature] <= self.threshold:
-            return self.left.predict_with_certainty(x)
-        return self.right.predict_with_certainty(x)
+            return self.left.predict_proba(x)
+        return self.right.predict_proba(x)
 
     def is_leaf_node(self):
         """Helper method to check if this node is a leaf."""
@@ -104,8 +104,16 @@ class BaseTree:
         self.min_samples_leaf_ratio = min_samples_leaf_ratio
         self.root = None
 
+        self.n_classes = 0  # we will keep this to be able to store hot-encoding vector as probabilities
+
+    def predict(self, X: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        return np.array([self.root.predict(x) for x in X])
+
     def fit(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64]):
         # create a root node and all nodes subsequently using a recursion
+
+        self.n_classes = int(np.max(labels)) + 1
+
         min_samples_split = int(X.shape[0] * self.min_samples_split_ratio)
         min_samples_leaf = int(X.shape[0] * self.min_samples_leaf_ratio)
         self.root = self._build_tree(X, labels, min_samples_split, min_samples_leaf)
@@ -152,12 +160,14 @@ class BaseTree:
     def _create_leaf(self, labels: npt.NDArray[np.uint64]) -> Node:
         """Helper to calculate the most frequent label and create a leaf node."""
         values, counts = np.unique(labels, return_counts=True)
+        probs = np.zeros(self.n_classes, dtype=np.float64)
+
+        probs[values] = counts / labels.shape[0]
+
         max_index = np.argmax(counts)
-
         most_frequent = values[max_index]
-        certainty = counts[max_index] / labels.shape[0]
 
-        return Node(value=most_frequent, certainty=certainty)
+        return Node(value=most_frequent, probabilities=probs)
 
     def _get_best_candidate(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64], min_samples_leaf) -> Node:
         """Helper that tries to find the best node to split on"""
@@ -194,7 +204,8 @@ class BaseTree:
 
         # BASE CASE: If it's a leaf, print the prediction
         if node.is_leaf_node():
-            print(f"{indent}-> Leaf: Predict Class {node.value} (Certainty: {node.certainty:.2%})")
+            prob_str = np.array2string(node.probabilities, precision=2, separator=', ')
+            print(f"{indent}-> Leaf: Predict Class {node.value} (Probabilities: {prob_str})")
             return
 
         # RECURSIVE STEP: Print the split condition, then traverse left and right
