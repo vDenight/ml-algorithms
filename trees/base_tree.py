@@ -91,12 +91,14 @@ class BaseTree:
     which uses the gini impurity for choosing the right nodes.
     """
 
-    def __init__(self, max_depth: int = 1000, min_samples_split_ratio: float = 0.0, min_samples_leaf_ratio: float = 0.0) -> None:
+    def __init__(self, max_depth: int = 1000, *, min_samples_split=0, min_samples_leaf=0,
+                 min_samples_split_ratio: float | None = None,
+                 min_samples_leaf_ratio: float | None = None) -> None:
         if max_depth <= 0:
             raise ValueError("max_depth must be greater than 0")
-        if min_samples_split_ratio < 0 or min_samples_split_ratio >= 1:
+        if min_samples_split_ratio is not None and (min_samples_split_ratio < 0 or min_samples_split_ratio >= 1):
             raise ValueError("min_samples_split_ratio must be between 0 and 1")
-        if min_samples_leaf_ratio < 0 or min_samples_leaf_ratio >= 1:
+        if min_samples_leaf_ratio is not None and (min_samples_leaf_ratio < 0 or min_samples_leaf_ratio >= 1):
             raise ValueError("min_samples_leaf_ratio must be between 0 and 1")
 
         self.max_depth = max_depth
@@ -114,8 +116,11 @@ class BaseTree:
 
         self.n_classes = int(np.max(labels)) + 1
 
-        min_samples_split = int(X.shape[0] * self.min_samples_split_ratio)
-        min_samples_leaf = int(X.shape[0] * self.min_samples_leaf_ratio)
+        min_samples_split = int(X.shape[
+                                    0] * self.min_samples_split_ratio) if self.min_samples_split_ratio is not None else self.min_samples_split_ratio
+        min_samples_leaf = int(X.shape[
+                                   0] * self.min_samples_leaf_ratio) if self.min_samples_leaf_ratio is not None else self.min_samples_leaf_ratio
+
         self.root = self._build_tree(X, labels, min_samples_split, min_samples_leaf)
 
     def _build_tree(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64], depth=0,
@@ -147,8 +152,10 @@ class BaseTree:
         # we additionally check if our threshold is splitting any data
         if np.any(left_mask) and np.any(~left_mask):
             # case 4: we get a split so we build additional nodes as left and right children
-            node.left = self._build_tree(X[left_mask], labels[left_mask], depth + 1, min_samples_split, min_samples_leaf)
-            node.right = self._build_tree(X[~left_mask], labels[~left_mask], depth + 1, min_samples_split, min_samples_leaf)
+            node.left = self._build_tree(X[left_mask], labels[left_mask], depth + 1, min_samples_split,
+                                         min_samples_leaf)
+            node.right = self._build_tree(X[~left_mask], labels[~left_mask], depth + 1, min_samples_split,
+                                          min_samples_leaf)
         else:
             # case 5: best feature/threshold combo isn't able to differentiate any two sub-groups
             # in this case we need to (forcefully) transform it node as further splits don't make any sense
