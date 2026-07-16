@@ -2,7 +2,7 @@ import numpy as np
 import numpy.typing as npt
 
 
-def calculate_node_gini(labels: npt.NDArray[np.int64]) -> np.float64:
+def calculate_node_gini(labels: npt.NDArray[np.uint64]) -> np.float64:
     """
     Calculates the Gini Impurity of a node.
 
@@ -19,11 +19,16 @@ def calculate_node_gini(labels: npt.NDArray[np.int64]) -> np.float64:
     _, counts = np.unique(labels, return_counts=True)
 
     probabilities = counts / num_samples
-    return 1.0 - np.sum(probabilities ** 2)
+    return 1.0 - np.sum(probabilities**2)
 
 
-def calculate_weighted_gini(feature: np.uint64, threshold: np.float64, X: npt.NDArray[np.float64],
-                            labels: npt.NDArray[np.uint64], min_samples_leaf: int) -> np.float64:
+def calculate_weighted_gini(
+    feature: np.uint64,
+    threshold: np.float64,
+    X: npt.NDArray[np.float64],
+    labels: npt.NDArray[np.uint64],
+    min_samples_leaf: int,
+) -> np.float64:
     """
     Calculates the weighted Gini Impurity of a node.
 
@@ -41,17 +46,31 @@ def calculate_weighted_gini(feature: np.uint64, threshold: np.float64, X: npt.ND
     left_labels = labels[left_mask]
     right_labels = labels[~left_mask]
 
-    if left_labels.shape[0] < min_samples_leaf or right_labels.shape[0] < min_samples_leaf:
+    if (
+        left_labels.shape[0] < min_samples_leaf
+        or right_labels.shape[0] < min_samples_leaf
+    ):
         return np.float64(np.inf)
 
     gini_left = calculate_node_gini(left_labels)
     gini_right = calculate_node_gini(right_labels)
 
-    return (left_labels.shape[0] / n_total * gini_left) + (right_labels.shape[0] / n_total * gini_right)
+    return (left_labels.shape[0] / n_total * gini_left) + (
+        right_labels.shape[0] / n_total * gini_right
+    )
 
 
 class Node:
-    def __init__(self, feature=None, threshold=None, left=None, right=None, *, value=None, probabilities=None):
+    def __init__(
+        self,
+        feature=None,
+        threshold=None,
+        left=None,
+        right=None,
+        *,
+        value=None,
+        probabilities=None,
+    ):
         self.feature = feature  # Index of the feature to split on
         self.threshold = threshold  # The value to split that feature at
         self.left = left  # The left child Node
@@ -60,12 +79,16 @@ class Node:
         self.value = value  # the majority class (only populated if it is a leaf)
         self.probabilities = probabilities  # optional value to get a certainty like 75% of accurate guess
 
-    def predict(self, x: npt.NDArray[np.float64]) -> int:
+    def predict(self, x: npt.NDArray[np.float64]) -> np.uint64:
         """
         Predicts the label for a single 1D sample array.
         """
         if self.value is not None:
             return self.value
+
+        assert self.threshold is not None  # assertions to make TY quiet
+        assert self.left is not None
+        assert self.right is not None
 
         if x[self.feature] <= self.threshold:
             return self.left.predict(x)
@@ -76,6 +99,11 @@ class Node:
         """Returns the full probability vector for a single sample."""
         if self.probabilities is not None:
             return self.probabilities
+
+        assert self.threshold is not None  # assertions to make TY quiet
+        assert self.left is not None
+        assert self.right is not None
+
         if x[self.feature] <= self.threshold:
             return self.left.predict_proba(x)
         return self.right.predict_proba(x)
@@ -91,40 +119,82 @@ class BaseTree:
     which uses the gini impurity for choosing the right nodes.
     """
 
-    def __init__(self, max_depth: int = 1000, *, min_samples_split=0, min_samples_leaf=0,
-                 min_samples_split_ratio: float | None = None,
-                 min_samples_leaf_ratio: float | None = None) -> None:
+    def __init__(
+        self,
+        max_depth: int = 1000,
+        *,
+        min_samples_split=0,
+        min_samples_leaf=0,
+        min_samples_split_ratio: float | None = None,
+        min_samples_leaf_ratio: float | None = None,
+    ) -> None:
         if max_depth <= 0:
             raise ValueError("max_depth must be greater than 0")
-        if min_samples_split_ratio is not None and (min_samples_split_ratio < 0 or min_samples_split_ratio >= 1):
+        if min_samples_split_ratio is not None and (
+            min_samples_split_ratio < 0 or min_samples_split_ratio >= 1
+        ):
             raise ValueError("min_samples_split_ratio must be between 0 and 1")
-        if min_samples_leaf_ratio is not None and (min_samples_leaf_ratio < 0 or min_samples_leaf_ratio >= 1):
+        if min_samples_leaf_ratio is not None and (
+            min_samples_leaf_ratio < 0 or min_samples_leaf_ratio >= 1
+        ):
             raise ValueError("min_samples_leaf_ratio must be between 0 and 1")
 
         self.max_depth = max_depth
         self.min_samples_split_ratio = min_samples_split_ratio
         self.min_samples_leaf_ratio = min_samples_leaf_ratio
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
         self.root = None
 
-        self.n_classes = 0  # we will keep this to be able to store hot-encoding vector as probabilities
+        self.n_labels = 0  # we will keep this to be able to store hot-encoding vector as probabilities
 
-    def predict(self, X: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-        return np.array([self.root.predict(x) for x in X])
+    def predict(self, X: npt.NDArray[np.float64]) -> npt.NDArray[np.uint64] | None:
+        return (
+            np.array([self.root.predict(x) for x in X])
+            if self.root is not None
+            else None
+        )
+
+    def predict_proba(
+        self, X: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64] | None:
+        return (
+            np.array([self.root.predict_proba(x) for x in X])
+            if self.root is not None
+            else None
+        )
 
     def fit(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64]):
         # create a root node and all nodes subsequently using a recursion
 
-        self.n_classes = int(np.max(labels)) + 1
+        self.n_labels = int(np.max(labels)) + 1
 
-        min_samples_split = int(X.shape[
-                                    0] * self.min_samples_split_ratio) if self.min_samples_split_ratio is not None else self.min_samples_split_ratio
-        min_samples_leaf = int(X.shape[
-                                   0] * self.min_samples_leaf_ratio) if self.min_samples_leaf_ratio is not None else self.min_samples_leaf_ratio
+        min_samples_split = (
+            int(X.shape[0] * self.min_samples_split_ratio)
+            if self.min_samples_split_ratio is not None
+            else self.min_samples_split
+        )
+        min_samples_leaf = (
+            int(X.shape[0] * self.min_samples_leaf_ratio)
+            if self.min_samples_leaf_ratio is not None
+            else self.min_samples_leaf
+        )
 
-        self.root = self._build_tree(X, labels, min_samples_split, min_samples_leaf)
+        self.root = self._build_tree(
+            X,
+            labels,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+        )
 
-    def _build_tree(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64], depth=0,
-                    min_samples_split: int = 0, min_samples_leaf: int = 0) -> Node:
+    def _build_tree(
+        self,
+        X: npt.NDArray[np.float64],
+        labels: npt.NDArray[np.uint64],
+        depth=0,
+        min_samples_split: int = 0,
+        min_samples_leaf: int = 0,
+    ) -> Node:
         """
         This is a recursive function that builds the entire tree, based on its current X, labels and depth.
         what it does:
@@ -147,15 +217,25 @@ class BaseTree:
         # not a pure node so we look for a best split strategy
         node = self._get_best_candidate(X, labels, min_samples_leaf)
 
-        left_mask = X[:, node.feature] <= node.threshold
+        left_mask = X[:, node.feature] <= node.threshold  # ty:ignore[unsupported-operator]
 
         # we additionally check if our threshold is splitting any data
         if np.any(left_mask) and np.any(~left_mask):
             # case 4: we get a split so we build additional nodes as left and right children
-            node.left = self._build_tree(X[left_mask], labels[left_mask], depth + 1, min_samples_split,
-                                         min_samples_leaf)
-            node.right = self._build_tree(X[~left_mask], labels[~left_mask], depth + 1, min_samples_split,
-                                          min_samples_leaf)
+            node.left = self._build_tree(
+                X[left_mask],
+                labels[left_mask],
+                depth + 1,
+                min_samples_split,
+                min_samples_leaf,
+            )
+            node.right = self._build_tree(
+                X[~left_mask],
+                labels[~left_mask],
+                depth + 1,
+                min_samples_split,
+                min_samples_leaf,
+            )
         else:
             # case 5: best feature/threshold combo isn't able to differentiate any two sub-groups
             # in this case we need to (forcefully) transform it node as further splits don't make any sense
@@ -167,7 +247,7 @@ class BaseTree:
     def _create_leaf(self, labels: npt.NDArray[np.uint64]) -> Node:
         """Helper to calculate the most frequent label and create a leaf node."""
         values, counts = np.unique(labels, return_counts=True)
-        probs = np.zeros(self.n_classes, dtype=np.float64)
+        probs = np.zeros(self.n_labels, dtype=np.float64)
 
         probs[values] = counts / labels.shape[0]
 
@@ -176,9 +256,18 @@ class BaseTree:
 
         return Node(value=most_frequent, probabilities=probs)
 
-    def _get_best_candidate(self, X: npt.NDArray[np.float64], labels: npt.NDArray[np.uint64], min_samples_leaf) -> Node:
+    def _get_best_candidate(
+        self,
+        X: npt.NDArray[np.float64],
+        labels: npt.NDArray[np.uint64],
+        min_samples_leaf,
+    ) -> Node:
         """Helper that tries to find the best node to split on"""
-        best_candidate = {"threshold": np.float64(np.inf), "feature": np.uint64(0), "weighted_gini": np.float64(np.inf)}
+        best_candidate = {
+            "threshold": np.float64(np.inf),
+            "feature": np.uint64(0),
+            "weighted_gini": np.float64(np.inf),
+        }
         for i in range(X.shape[1]):
             unique_col_vals_sorted = np.unique(X[:, i])
 
@@ -186,13 +275,25 @@ class BaseTree:
             if len(unique_col_vals_sorted) <= 1:
                 continue
 
-            thresholds: npt.NDArray[np.float64] = (unique_col_vals_sorted[:-1] + unique_col_vals_sorted[1:]) / 2
+            thresholds: npt.NDArray[np.float64] = (
+                unique_col_vals_sorted[:-1] + unique_col_vals_sorted[1:]
+            ) / 2
             for threshold in thresholds:
-                weighted_gini = calculate_weighted_gini(i, threshold, X, labels, min_samples_leaf)
-                if weighted_gini < best_candidate["weighted_gini"]:  # comparing to the best score so far
-                    best_candidate = {"threshold": threshold, "feature": i, "weighted_gini": weighted_gini}
+                weighted_gini = calculate_weighted_gini(
+                    np.uint64(i), threshold, X, labels, min_samples_leaf
+                )
+                if (
+                    weighted_gini < best_candidate["weighted_gini"]
+                ):  # comparing to the best score so far
+                    best_candidate = {
+                        "threshold": threshold,
+                        "feature": i,
+                        "weighted_gini": weighted_gini,
+                    }
 
-        return Node(feature=best_candidate["feature"], threshold=best_candidate["threshold"])
+        return Node(
+            feature=best_candidate["feature"], threshold=best_candidate["threshold"]
+        )
 
     def print_tree(self, node=None, depth=0):
         """
@@ -211,13 +312,19 @@ class BaseTree:
 
         # BASE CASE: If it's a leaf, print the prediction
         if node.is_leaf_node():
-            prob_str = np.array2string(node.probabilities, precision=2, separator=', ')
-            print(f"{indent}-> Leaf: Predict Class {node.value} (Probabilities: {prob_str})")
+            prob_str = np.array2string(node.probabilities, precision=2, separator=", ")  # ty:ignore[invalid-argument-type]
+            print(
+                f"{indent}-> Leaf: Predict Class {node.value} (Probabilities: {prob_str})"
+            )
             return
 
         # RECURSIVE STEP: Print the split condition, then traverse left and right
-        print(f"{indent}[Depth {depth}] If Feature {node.feature} <= {node.threshold:.4f}:")
+        print(
+            f"{indent}[Depth {depth}] If Feature {node.feature} <= {node.threshold:.4f}:"
+        )
         self.print_tree(node.left, depth + 1)
 
-        print(f"{indent}[Depth {depth}] Else (Feature {node.feature} > {node.threshold:.4f}):")
+        print(
+            f"{indent}[Depth {depth}] Else (Feature {node.feature} > {node.threshold:.4f}):"
+        )
         self.print_tree(node.right, depth + 1)

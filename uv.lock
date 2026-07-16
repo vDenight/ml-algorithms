@@ -923,6 +923,7 @@ dependencies = [
     { name = "pip" },
     { name = "scikit-learn" },
     { name = "scipy" },
+    { name = "ty" },
 ]
 
 [package.dev-dependencies]
@@ -941,6 +942,7 @@ requires-dist = [
     { name = "pip", specifier = ">=26.1.2" },
     { name = "scikit-learn", specifier = ">=1.9.0" },
     { name = "scipy", specifier = ">=1.17.1" },
+    { name = "ty", specifier = ">=0.0.47" },
 ]
 
 [package.metadata.requires-dev]

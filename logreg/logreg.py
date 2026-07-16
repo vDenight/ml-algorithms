@@ -6,7 +6,7 @@ import numpy.typing as npt
 
 class LogisticRegression:
 
-    def __init__(self, n_features: int, threshold: np.float64 = 0.5, seed: int | None = None):
+    def __init__(self, n_features: int, threshold: np.float64 = np.float64(0.5), seed: int | None = None):
         self.linreg = LinearRegression(n_features, seed=seed)
         self.threshold = threshold
 
