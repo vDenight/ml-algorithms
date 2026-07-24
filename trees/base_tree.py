@@ -269,7 +269,7 @@ class BaseTree:
             "weighted_gini": np.float64(np.inf),
         }
         for i in range(X.shape[1]):
-            unique_col_vals_sorted = np.unique(X[:, i])
+            unique_col_vals_sorted = np.unique(X[:, i]) # unique sorts as well
 
             # explicitly skip this feature if all the label values are identical
             if len(unique_col_vals_sorted) <= 1:

@@ -23,3 +23,6 @@ dev = [
     "ruff>=0.15.16",
     "ty>=0.0.47",
 ]
+
+[tool.ruff.lint]
+extend-ignore = ["F722"]
