@@ -7,7 +7,7 @@ class Node(ABC):
     pass
 
     @abstractmethod
-    def predict(self, x: Float[np.ndarray, " K"]) -> float:
+    def predict(self, X: Float[np.ndarray, "N F"]) -> Float[np.ndarray, " N"]:
         pass
 
 class LeafNode(Node):
@@ -15,8 +15,8 @@ class LeafNode(Node):
         self.mean_value = mean_value
 
     @beartype
-    def predict(self, x: Float[np.ndarray, " K"]) -> float:
-        return self.mean_value
+    def predict(self, X: Float[np.ndarray, "N F"]) -> Float[np.ndarray, " N"]:
+        return np.full(X.shape[0], self.mean_value)
 
 class DecisionNode(Node):
     def __init__(self, threshold: float, feature: int, left_child: Node, right_child: Node):
@@ -26,12 +26,15 @@ class DecisionNode(Node):
         self.right_child = right_child
 
     @beartype
-    def predict(self, x: Float[np.ndarray, " K"]) -> float:
-        feat_val: float = x[self.feature]
-        if feat_val < self.threshold:
-            return self.left_child.predict(x)
-        else:
-            return self.right_child.predict(x)
+    def predict(self, X: Float[np.ndarray, "N F"]) -> Float[np.ndarray, " N"]:
+        results = np.zeros(X.shape[0])
+        left_mask = X[:, self.feature] < self.threshold
+        if np.any(left_mask):
+            results[left_mask] = self.left_child.predict(X[left_mask, :])
+        if np.any(~left_mask):
+            results[~left_mask] = self.right_child.predict(X[~left_mask, :])
+
+        return results
 
 class RegressionTree:
     def __init__(self, max_depth: int, min_samples_split: int, min_samples_leaf: int):
@@ -40,9 +43,18 @@ class RegressionTree:
         self.min_samples_leaf = min_samples_leaf
         self.root = None
 
+    @beartype
+    def predict(self, X: Float[np.ndarray, "N F"]) -> Float[np.ndarray, " N"]:
+        if self.root is None:
+            raise RuntimeError("Regression Tree has not been fit yet")
+
+        return self.root.predict(X)
+
+    @beartype
     def fit(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"]):
         self.root = self._build_tree(X, y)
 
+    @beartype
     def _build_tree(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"], current_depth=0) -> Node:
         if current_depth >= self.max_depth:
             return LeafNode(np.average(y))
@@ -65,6 +77,7 @@ class RegressionTree:
 
         return DecisionNode(best_candidate["threshold"], best_candidate["feature"], left_child, right_child)
 
+    @beartype
     def _find_best_candidate_naive(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"]):
         best_candidate = {
             "threshold": float("inf"),
@@ -89,6 +102,7 @@ class RegressionTree:
         return best_candidate
 
     @staticmethod
+    @beartype
     def _calculate_split_MSE(x: Float[np.ndarray, " N"], y: Float[np.ndarray, " N"], threshold: float) -> float:
         left_mask = x < threshold
         left_y = y[left_mask]
@@ -98,6 +112,7 @@ class RegressionTree:
 
         return (np.sum(np.square(left_y - left_avg)) + np.sum(np.square(right_y - right_avg))) / y.shape[0]
 
+    @beartype
     def _find_best_candidate_optimized(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"]):
         """In most videos explaining the Regression Tree the algorithm
         for finding the best candidate for a sleep is straightforward,
