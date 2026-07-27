@@ -187,3 +187,37 @@ class RegressionTree:
                 best_candidate["threshold"] = (x_sorted[start_idx + best_mse_index] + x_sorted[start_idx + best_mse_index + 1]) / 2
 
         return best_candidate
+
+    def print_tree(self, feature_names: list[str] | None = None):
+        """Prints the tree structure to the console."""
+        if self.root is None:
+            print("Tree has not been fit yet.")
+            return
+
+        print("Regression Tree Structure:")
+        print("=" * 30)
+        self._print_node(self.root, depth=0, prefix="", is_left=None, feature_names=feature_names)
+        print("=" * 30)
+
+    def _print_node(self, node: Node, depth: int, prefix: str, is_left: bool | None, feature_names: list[str] | None):
+        """Recursive helper to print the tree."""
+        # Format the branch prefix
+        if depth == 0:
+            branch = ""
+        else:
+            branch = prefix + ("├── " if is_left else "└── ")
+            prefix += "│   " if is_left else "    "
+
+        # Handle Leaf Nodes
+        if isinstance(node, LeafNode):
+            print(f"{branch}Leaf: value = {node.mean_value:.4f}")
+            return
+
+        # Handle Decision Nodes
+        if isinstance(node, DecisionNode):
+            feat_name = f"Feature_{node.feature}" if feature_names is None else feature_names[node.feature]
+            print(f"{branch}[{feat_name} < {node.threshold:.4f}]")
+
+            # Recursively print left (True) and right (False) children
+            self._print_node(node.left_child, depth + 1, prefix, is_left=True, feature_names=feature_names)
+            self._print_node(node.right_child, depth + 1, prefix, is_left=False, feature_names=feature_names)
