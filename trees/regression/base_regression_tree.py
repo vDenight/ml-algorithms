@@ -19,7 +19,7 @@ class LeafNode(Node):
         return self.mean_value
 
 class DecisionNode(Node):
-    def __init__(self, threshold: float, feature: int, left_child: Node | None = None, right_child: Node | None = None):
+    def __init__(self, threshold: float, feature: int, left_child: Node, right_child: Node):
         self.threshold = threshold
         self.feature = feature
         self.left_child = left_child
@@ -27,9 +27,6 @@ class DecisionNode(Node):
 
     @beartype
     def predict(self, x: Float[np.ndarray, " K"]) -> float:
-        if self.left_child is None or self.right_child is None:
-            raise RuntimeError("DecisionNode has no child nodes initialized")
-
         feat_val: float = x[self.feature]
         if feat_val < self.threshold:
             return self.left_child.predict(x)
@@ -43,7 +40,32 @@ class RegressionTree:
         self.min_samples_leaf = min_samples_leaf
         self.root = None
 
-    def find_best_candidate_naive(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"]):
+    def fit(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"]):
+        self.root = self._build_tree(X, y)
+
+    def _build_tree(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"], current_depth=0) -> Node:
+        if current_depth >= self.max_depth:
+            return LeafNode(np.average(y))
+
+        n_samples = X.shape[0]
+
+        if n_samples < self.min_samples_split:
+            return LeafNode(np.average(y))
+
+        # now we get best candidate
+        best_candidate = self._find_best_candidate_optimized(X, y)
+
+        if best_candidate["threshold"] == np.inf: # no suitable split found
+            return LeafNode(np.average(y))
+
+        left_mask = X[:, best_candidate["feature"]] < best_candidate["threshold"]
+
+        left_child = self._build_tree(X[left_mask, :], y[left_mask], current_depth + 1)
+        right_child = self._build_tree(X[~left_mask, :], y[~left_mask], current_depth + 1)
+
+        return DecisionNode(best_candidate["threshold"], best_candidate["feature"], left_child, right_child)
+
+    def _find_best_candidate_naive(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"]):
         best_candidate = {
             "threshold": float("inf"),
             "feature": -1,
@@ -58,7 +80,7 @@ class RegressionTree:
 
             thresholds = (unique_col_vals_sorted[:-1] + unique_col_vals_sorted[1:]) / 2
             for threshold in thresholds:
-                split_MSE = self.calculate_split_MSE(X[:, col], y, threshold)
+                split_MSE = self._calculate_split_MSE(X[:, col], y, threshold)
                 if split_MSE < best_candidate["MSE"]:
                     best_candidate["threshold"] = threshold
                     best_candidate["feature"] = col
@@ -67,7 +89,7 @@ class RegressionTree:
         return best_candidate
 
     @staticmethod
-    def calculate_split_MSE(x: Float[np.ndarray, " N"], y: Float[np.ndarray, " N"], threshold: float) -> float:
+    def _calculate_split_MSE(x: Float[np.ndarray, " N"], y: Float[np.ndarray, " N"], threshold: float) -> float:
         left_mask = x < threshold
         left_y = y[left_mask]
         left_avg = np.mean(left_y)
@@ -76,7 +98,7 @@ class RegressionTree:
 
         return (np.sum(np.square(left_y - left_avg)) + np.sum(np.square(right_y - right_avg))) / y.shape[0]
 
-    def find_best_candidate_optimized(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"], min_samples_leaf: int=1):
+    def _find_best_candidate_optimized(self, X: Float[np.ndarray, "N F"], y: Float[np.ndarray, " N"]):
         """In most videos explaining the Regression Tree the algorithm
         for finding the best candidate for a sleep is straightforward,
         - just calculate all values and compare
@@ -106,7 +128,7 @@ class RegressionTree:
         for col in range(n_features):
             x = X[:, col]
 
-            n = np.arange(min_samples_leaf, n_samples - min_samples_leaf + 1)
+            n = np.arange(self.min_samples_leaf, n_samples - self.min_samples_leaf + 1)
 
             sort_indices = np.argsort(x)
             x_sorted = x[sort_indices]
@@ -119,8 +141,8 @@ class RegressionTree:
             y_i_sum = left_sums_y[-1]
             y_i_sq_sum = left_sums_sq_y[-1]
 
-            start_idx = min_samples_leaf - 1
-            end_idx = n_samples - min_samples_leaf
+            start_idx = self.min_samples_leaf - 1
+            end_idx = n_samples - self.min_samples_leaf
 
             if start_idx >= end_idx:
                 continue
